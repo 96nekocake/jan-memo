@@ -1,0 +1,9 @@
+{
+  "background": "#F7F7F7",
+  "text": "#333333",
+  "secondaryText": "#6B6B6B",
+  "surface": "#EDEDED",
+  "added": "#BFE3CC",
+  "duplicate": "#F5D9A6",
+  "destructive": "#E9B4B0"
+}

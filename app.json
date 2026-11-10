@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "JANメモ",
+    "slug": "jan-memo",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "light"
+  }
+}
