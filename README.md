@@ -22,7 +22,7 @@ npx expo-doctor
 npm test -- --runInBand
 ```
 
-ユニットテストは `*.test.ts` / `*.test.tsx` に追加する。現時点では業務ロジックがないため、テストファイルは未追加。
+ユニットテストは `*.test.ts` / `*.test.tsx` に追加する。
 
 ## 使い方
 
