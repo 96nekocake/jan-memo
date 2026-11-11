@@ -37,3 +37,6 @@ yarn-error.*
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code のローカル設定（個人の承認状態を含むため公開しない）
+.claude/settings.local.json
