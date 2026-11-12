@@ -4,6 +4,7 @@ import {
   AppState,
   FlatList,
   Linking,
+  Modal,
   Platform,
   Pressable,
   StatusBar,
@@ -28,6 +29,8 @@ function ScannerScreen() {
   const [active, setActive] = useState(AppState.currentState === 'active');
   const [permissionError, setPermissionError] = useState(false);
   const [cameraError, setCameraError] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const confirmingClear = useRef(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width, height } = useWindowDimensions();
 
@@ -50,7 +53,7 @@ function ScannerScreen() {
   }, [getPermission]);
 
   const handleScan = useCallback(({ data }: BarcodeScanningResult) => {
-    if (AppState.currentState !== 'active') return;
+    if (AppState.currentState !== 'active' || confirmingClear.current) return;
     const result = session.scan(data);
     if (result.status !== 'added' && result.status !== 'duplicate') return;
 
@@ -67,6 +70,34 @@ function ScannerScreen() {
       Vibration.vibrate(Platform.OS === 'ios' ? [0, 600] : 400);
     }
   }, [session]);
+
+  function clearFeedback() {
+    if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
+    setNotice(null);
+    Vibration.cancel();
+  }
+
+  function removeCode(code: string) {
+    setCodes(session.remove(code));
+    clearFeedback();
+  }
+
+  function requestClear() {
+    if (codes.length === 0 || confirmingClear.current) return;
+    confirmingClear.current = true;
+    setConfirmClear(true);
+    clearFeedback();
+  }
+
+  function dismissClear() {
+    confirmingClear.current = false;
+    setConfirmClear(false);
+  }
+
+  function clearCodes() {
+    setCodes(session.clear());
+    dismissClear();
+  }
 
   async function allowCamera() {
     setPermissionError(false);
@@ -136,8 +167,30 @@ function ScannerScreen() {
             keyExtractor={(code) => code}
             contentContainerStyle={styles.listContent}
             ListEmptyComponent={<Text style={styles.secondaryText}>コードはありません</Text>}
-            renderItem={({ item }) => <Text style={styles.code}>{item}</Text>}
+            renderItem={({ item }) => (
+              <View style={styles.row}>
+                <Text style={styles.code}>{item}</Text>
+                <Pressable
+                  style={styles.removeButton}
+                  onPress={() => removeCode(item)}
+                  accessibilityRole="button"
+                  accessibilityLabel={item + 'を削除'}
+                >
+                  <Text style={styles.removeText}>✕</Text>
+                </Pressable>
+              </View>
+            )}
           />
+          <View style={styles.actions}>
+            <Pressable
+              style={[styles.button, styles.clearButton, codes.length === 0 && styles.disabled]}
+              onPress={requestClear}
+              disabled={codes.length === 0}
+              accessibilityRole="button"
+            >
+              <Text style={styles.text}>全消去</Text>
+            </Pressable>
+          </View>
           {notice && (
             <View
               style={[styles.notice, {
@@ -152,6 +205,31 @@ function ScannerScreen() {
           )}
         </View>
       </View>
+      <Modal
+        visible={confirmClear}
+        transparent
+        animationType="none"
+        onRequestClose={dismissClear}
+      >
+        <SafeAreaView style={styles.confirmationBackdrop}>
+          <View style={styles.confirmationCard} accessibilityViewIsModal>
+            <Text style={styles.title} accessibilityRole="header">全消去</Text>
+            <Text style={styles.text}>すべてのコードを削除しますか？</Text>
+            <View style={styles.confirmationActions}>
+              <Pressable style={styles.button} onPress={dismissClear} accessibilityRole="button">
+                <Text style={styles.buttonText}>キャンセル</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.button, styles.clearButton]}
+                onPress={clearCodes}
+                accessibilityRole="button"
+              >
+                <Text style={styles.text}>全消去</Text>
+              </Pressable>
+            </View>
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -184,15 +262,34 @@ const styles = StyleSheet.create({
   secondaryText: { fontSize: 16, color: COLORS.secondaryText },
   count: { padding: 12, fontSize: 16, color: COLORS.secondaryText },
   listContent: { paddingHorizontal: 12, paddingBottom: 72 },
-  code: {
-    padding: 12,
-    marginBottom: 8,
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.surface,
+    marginBottom: 8,
+  },
+  code: {
+    flex: 1,
+    padding: 12,
     color: COLORS.text,
     fontSize: 24,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   button: { padding: 12, backgroundColor: COLORS.text },
   buttonText: { fontSize: 16, color: COLORS.background },
-  notice: { position: 'absolute', bottom: 12, left: 12, right: 12, padding: 16 },
+  removeButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  removeText: { fontSize: 24, color: COLORS.destructive },
+  actions: { padding: 12 },
+  clearButton: { backgroundColor: COLORS.destructive, alignItems: 'center' },
+  disabled: { backgroundColor: COLORS.surface },
+  notice: { position: 'absolute', bottom: 76, left: 12, right: 12, padding: 16 },
+  confirmationBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+    backgroundColor: COLORS.background,
+  },
+  confirmationCard: { maxWidth: 360, padding: 20, gap: 20, backgroundColor: COLORS.surface },
+  confirmationActions: { flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 12 },
 });
