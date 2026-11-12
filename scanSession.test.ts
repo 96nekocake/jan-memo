@@ -23,15 +23,18 @@ describe('ScanSession', () => {
     });
   });
 
-  test('同一コードは1499msまで無視し、1500msで重複を通知する', () => {
+  test.each([
+    [0, 'throttled'],
+    [1499, 'throttled'],
+    [1500, 'duplicate'],
+    [1501, 'duplicate'],
+  ])('最後の検出から%sms後の再検出は%sになる', (gap, status) => {
     const session = new ScanSession();
     session.scan(first, 0);
 
-    expect(session.scan(first, 0)).toEqual({ status: 'throttled' });
-    expect(session.scan(first, 1499)).toEqual({ status: 'throttled' });
-    expect(session.scan(first, 1500)).toEqual({ status: 'duplicate', codes: [first] });
-    expect(session.scan(first, 2999)).toEqual({ status: 'throttled' });
-    expect(session.scan(first, 3000)).toEqual({ status: 'duplicate', codes: [first] });
+    expect(session.scan(first, gap)).toEqual(
+      status === 'duplicate' ? { status, codes: [first] } : { status },
+    );
   });
 
   test('別のコードが間に入ってもコードごとの抑制を保つ', () => {
@@ -41,24 +44,34 @@ describe('ScanSession', () => {
 
     expect(session.scan(first, 200)).toEqual({ status: 'throttled' });
     expect(session.scan(second, 1500)).toEqual({ status: 'throttled' });
-    expect(session.scan(first, 1500)).toEqual({
+    expect(session.scan(first, 1700)).toEqual({
       status: 'duplicate',
       codes: [second, first],
     });
-    expect(session.scan(second, 1600)).toEqual({
+    expect(session.scan(second, 3000)).toEqual({
       status: 'duplicate',
       codes: [second, first],
     });
   });
 
-  test('無視したフレームは抑制時間を延長しない', () => {
-    const session = new ScanSession();
-    session.scan(first, 0);
-    for (let now = 100; now < 1500; now += 100) {
-      expect(session.scan(first, now)).toEqual({ status: 'throttled' });
-    }
-    expect(session.scan(first, 1500)).toEqual({ status: 'duplicate', codes: [first] });
-  });
+  test.each(['added', 'duplicate'])(
+    '%s通知後も映し続けている間は抑制し、1.5秒以上途切れた後に重複を通知する',
+    (initialStatus) => {
+      const session = new ScanSession();
+      session.scan(first, 0);
+      const start = initialStatus === 'duplicate' ? 1500 : 0;
+      if (initialStatus === 'duplicate') {
+        expect(session.scan(first, start)).toEqual({ status: 'duplicate', codes: [first] });
+      }
+
+      for (let now = start + 100; now <= start + 10000; now += 100) {
+        expect(session.scan(first, now)).toEqual({ status: 'throttled' });
+      }
+
+      expect(session.scan(first, start + 11499)).toEqual({ status: 'throttled' });
+      expect(session.scan(first, start + 12999)).toEqual({ status: 'duplicate', codes: [first] });
+    },
+  );
 
   test.each(['4006381333932', '96385075', '', '9638507A', '96385074\n'])(
     '不正なコードを一覧に追加しない: %j',
