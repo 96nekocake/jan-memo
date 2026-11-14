@@ -11,6 +11,19 @@ export class ScanSession {
   private registered = new Set<string>();
   private lastDetected = new Map<string, number>();
 
+  remove(code: string): readonly string[] {
+    if (this.registered.delete(code)) {
+      this.codes = this.codes.filter((item) => item !== code);
+    }
+    return this.codes;
+  }
+
+  clear(): readonly string[] {
+    this.codes = [];
+    this.registered.clear();
+    return this.codes;
+  }
+
   scan(code: string, now: number = Date.now()): ScanResult {
     if (!isValidJanCode(code)) {
       return { status: 'invalid' };
