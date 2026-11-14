@@ -11,6 +11,11 @@ export class ScanSession {
   private registered = new Set<string>();
   private lastDetected = new Map<string, number>();
 
+  constructor(codes: readonly string[] = []) {
+    this.codes = [...codes];
+    this.registered = new Set(codes);
+  }
+
   remove(code: string): readonly string[] {
     if (this.registered.delete(code)) {
       this.codes = this.codes.filter((item) => item !== code);

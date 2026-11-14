@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -17,14 +18,22 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 import COLORS from './colors.json';
+import { CodeStorage } from './codeStorage';
 import { ScanSession } from './scanSession';
 
 type Notice = 'added' | 'duplicate';
 
 function ScannerScreen() {
   const [permission, requestPermission, getPermission] = useCameraPermissions();
-  const [session] = useState(() => new ScanSession());
+  const [storage] = useState(() => new CodeStorage(AsyncStorage));
+  const session = useRef<ScanSession | null>(null);
   const [codes, setCodes] = useState<readonly string[]>([]);
+  const latestCodes = useRef<readonly string[]>([]);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [saveError, setSaveError] = useState(false);
+  const saveRevision = useRef(0);
+  const mounted = useRef(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const [active, setActive] = useState(AppState.currentState === 'active');
   const [permissionError, setPermissionError] = useState(false);
@@ -33,6 +42,35 @@ function ScannerScreen() {
   const confirmingClear = useRef(false);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width, height } = useWindowDimensions();
+
+  useEffect(() => {
+    let cancelled = false;
+    mounted.current = true;
+    void storage.load().then((restored) => {
+      if (cancelled) return;
+      session.current = new ScanSession(restored);
+      latestCodes.current = restored;
+      setCodes(restored);
+      setLoadState('ready');
+    }).catch(() => {
+      if (!cancelled) setLoadState('error');
+    });
+    return () => {
+      cancelled = true;
+      mounted.current = false;
+    };
+  }, [storage, loadAttempt]);
+
+  const persistCodes = useCallback((next: readonly string[]) => {
+    latestCodes.current = next;
+    setCodes(next);
+    const revision = ++saveRevision.current;
+    void storage.save(next).then(() => {
+      if (mounted.current && revision === saveRevision.current) setSaveError(false);
+    }, () => {
+      if (mounted.current && revision === saveRevision.current) setSaveError(true);
+    });
+  }, [storage]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
@@ -54,10 +92,11 @@ function ScannerScreen() {
 
   const handleScan = useCallback(({ data }: BarcodeScanningResult) => {
     if (AppState.currentState !== 'active' || confirmingClear.current) return;
-    const result = session.scan(data);
+    if (!session.current) return;
+    const result = session.current.scan(data);
     if (result.status !== 'added' && result.status !== 'duplicate') return;
 
-    setCodes(result.codes);
+    if (result.status === 'added') persistCodes(result.codes);
     setNotice(result.status);
     if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
     noticeTimer.current = setTimeout(() => setNotice(null), 1500);
@@ -69,7 +108,7 @@ function ScannerScreen() {
       // iOSは1回の振動時間を指定できないため、重複時は2回振動させる。
       Vibration.vibrate(Platform.OS === 'ios' ? [0, 600] : 400);
     }
-  }, [session]);
+  }, [persistCodes]);
 
   function clearFeedback() {
     if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
@@ -78,7 +117,8 @@ function ScannerScreen() {
   }
 
   function removeCode(code: string) {
-    setCodes(session.remove(code));
+    if (!session.current) return;
+    persistCodes(session.current.remove(code));
     clearFeedback();
   }
 
@@ -95,7 +135,8 @@ function ScannerScreen() {
   }
 
   function clearCodes() {
-    setCodes(session.clear());
+    if (!session.current) return;
+    persistCodes(session.current.clear());
     dismissClear();
   }
 
@@ -110,6 +151,28 @@ function ScannerScreen() {
     } catch {
       setPermissionError(true);
     }
+  }
+
+  if (loadState !== 'ready') {
+    return (
+      <SafeAreaView style={styles.center}>
+        <Text style={styles.secondaryText}>
+          {loadState === 'loading' ? '一覧を読み込み中' : '保存した一覧を読み込めません'}
+        </Text>
+        {loadState === 'error' && (
+          <Pressable
+            style={styles.button}
+            accessibilityRole="button"
+            onPress={() => {
+              setLoadState('loading');
+              setLoadAttempt((attempt) => attempt + 1);
+            }}
+          >
+            <Text style={styles.buttonText}>再試行</Text>
+          </Pressable>
+        )}
+      </SafeAreaView>
+    );
   }
 
   if (!permission) {
@@ -162,6 +225,18 @@ function ScannerScreen() {
         </View>
         <View style={styles.listRegion}>
           <Text style={styles.count}>{codes.length}件</Text>
+          {saveError && (
+            <View style={styles.storageError} accessibilityLiveRegion="polite">
+              <Text style={styles.text}>一覧を保存できません</Text>
+              <Pressable
+                style={styles.button}
+                accessibilityRole="button"
+                onPress={() => persistCodes(latestCodes.current)}
+              >
+                <Text style={styles.buttonText}>再試行</Text>
+              </Pressable>
+            </View>
+          )}
           <FlatList
             data={codes}
             keyExtractor={(code) => code}
@@ -280,6 +355,7 @@ const styles = StyleSheet.create({
   removeButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   removeText: { fontSize: 24, color: COLORS.destructive },
   actions: { padding: 12 },
+  storageError: { marginHorizontal: 12, marginBottom: 12, padding: 12, gap: 8, backgroundColor: COLORS.surface },
   clearButton: { backgroundColor: COLORS.destructive, alignItems: 'center' },
   disabled: { backgroundColor: COLORS.surface },
   notice: { position: 'absolute', bottom: 76, left: 12, right: 12, padding: 16 },
