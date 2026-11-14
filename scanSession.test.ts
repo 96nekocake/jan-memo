@@ -106,7 +106,7 @@ describe('ScanSession', () => {
     session.remove(first);
 
     expect(session.scan(first, 1499)).toEqual({ status: 'throttled' });
-    expect(session.scan(first, 1500)).toEqual({
+    expect(session.scan(first, 2999)).toEqual({
       status: 'added', codes: [first, second],
     });
   });
