@@ -4,6 +4,19 @@
     "slug": "jan-memo",
     "version": "0.1.0",
     "orientation": "default",
-    "userInterfaceStyle": "light"
+    "userInterfaceStyle": "light",
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "JANコードの読み取りにカメラを使用します。",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ]
+    ],
+    "android": {
+      "permissions": ["android.permission.VIBRATE"]
+    }
   }
 }
