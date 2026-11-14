@@ -9,7 +9,7 @@ export type ScanResult =
 export class ScanSession {
   private codes: readonly string[] = [];
   private registered = new Set<string>();
-  private lastProcessed = new Map<string, number>();
+  private lastDetected = new Map<string, number>();
 
   remove(code: string): readonly string[] {
     if (this.registered.delete(code)) {
@@ -29,12 +29,12 @@ export class ScanSession {
       return { status: 'invalid' };
     }
 
-    const last = this.lastProcessed.get(code);
+    const last = this.lastDetected.get(code);
+    this.lastDetected.set(code, now);
     if (last !== undefined && now - last < SCAN_INTERVAL_MS) {
       return { status: 'throttled' };
     }
 
-    this.lastProcessed.set(code, now);
     if (this.registered.has(code)) {
       return { status: 'duplicate', codes: this.codes };
     }
